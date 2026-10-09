@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f6f3ee">
+<link rel="manifest" href="manifest.webmanifest">
+<title>Plak Takip</title>
+<style>
+:root{color-scheme:light;--ink:#252a28;--muted:#777e79;--paper:#f6f3ee;--card:#fffefa;--green:#315b4c;--line:#e6e1d8;--peach:#f1dfd4}
+*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+main{max-width:520px;margin:auto;padding:calc(22px + env(safe-area-inset-top)) 18px calc(28px + env(safe-area-inset-bottom))}
+.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px}.eyebrow{font-size:12px;letter-spacing:.13em;text-transform:uppercase;color:var(--muted)}h1{font-size:29px;margin:5px 0 0;letter-spacing:-.04em}.pill{font-size:12px;padding:8px 10px;border-radius:99px;background:#e8e9e1;color:var(--green)}
+.hero{background:var(--card);border:1px solid var(--line);border-radius:26px;padding:24px 20px;text-align:center;box-shadow:0 8px 30px #38302408}.status{font-size:14px;color:var(--muted)}.timer{font-size:48px;font-weight:650;letter-spacing:-.055em;font-variant-numeric:tabular-nums;margin:12px 0 6px}.sub{font-size:13px;color:var(--muted);margin-bottom:22px}
+button{font:inherit;border:0;cursor:pointer}.mainbtn{width:100%;border-radius:15px;padding:16px;font-weight:650;font-size:16px;background:var(--green);color:white}.mainbtn.stop{background:var(--peach);color:#6d3827}.secondary{background:transparent;border:1px solid var(--line);color:var(--ink);padding:11px 14px;border-radius:12px;font-size:13px}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:14px 0}.stat{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:17px}.stat .label{font-size:12px;color:var(--muted)}.stat strong{display:block;font-size:24px;margin-top:8px;letter-spacing:-.04em}
+.section{margin-top:25px}.sectionhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}h2{font-size:17px;margin:0;letter-spacing:-.02em}.date{font-size:12px;color:var(--muted)}
+.session{display:flex;align-items:center;justify-content:space-between;background:var(--card);border:1px solid var(--line);border-radius:15px;padding:14px 15px;margin-bottom:8px}.session .time{font-size:14px;font-weight:600}.session .detail{font-size:12px;color:var(--muted);margin-top:4px}.duration{font-weight:650;font-variant-numeric:tabular-nums}
+.empty{color:var(--muted);font-size:13px;padding:16px 2px}.foot{font-size:11px;line-height:1.5;color:var(--muted);margin-top:24px}.tools{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.toast{display:none;margin-top:12px;padding:11px;border-radius:12px;background:#e8e9e1;color:var(--green);font-size:13px}
+</style>
+</head>
+<body><main>
+  <div class="top"><div><div class="eyebrow">Günlük alışkanlık</div><h1>Plak Takip</h1></div><span class="pill" id="statePill">Plak takılı</span></div>
+  <section class="hero">
+    <div class="status" id="statusText">Plak şu anda takılı görünüyor</div>
+    <div class="timer" id="timer">00:00:00</div>
+    <div class="sub" id="timerSub">Bir sonraki çıkarma seansını başlatmaya hazırsın</div>
+    <button class="mainbtn" id="toggleBtn">Plağı Çıkardım</button>
+    <div class="tools"><button class="secondary" id="notifyBtn">Bildirim iznini aç</button><button class="secondary" id="exportBtn">Verileri dışa aktar</button></div>
+    <div class="toast" id="toast"></div>
+  </section>
+  <section class="stats">
+    <div class="stat"><div class="label">Bugünkü non-wear time</div><strong id="total">0 dk</strong></div>
+    <div class="stat"><div class="label">Çıkarma seansı</div><strong id="count">0</strong></div>
+  </section>
+  <section class="section">
+    <div class="sectionhead"><h2>Bugünün seansları</h2><span class="date" id="today"></span></div>
+    <div id="sessions"><div class="empty">Henüz seans yok. Plağı çıkardığında başlat.</div></div>
+  </section>
+  <p class="foot">Süreler bu cihazda saklanır. Hatırlatma, uygulama açıkken 30 dakikada bir çalışır. iPhone'da uygulama kapalıyken garantili bildirim için bu prototipin ayrıca web push hizmetiyle yayımlanması gerekir.</p>
+</main>
+<script>
+const KEY='plak-takip-v1';
+let data=JSON.parse(localStorage.getItem(KEY)||'{"sessions":[],"activeSince":null}');
+let reminderTimer=null, uiTimer=null;
+const $=id=>document.getElementById(id);
+const save=()=>localStorage.setItem(KEY,JSON.stringify(data));
+const todayKey=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`};
+const fmtDuration=ms=>{let sec=Math.max(0,Math.floor(ms/1000));const h=Math.floor(sec/3600);sec%=3600;const m=Math.floor(sec/60);sec%=60;return [h,m,sec].map(n=>String(n).padStart(2,'0')).join(':')};
+const fmtShort=ms=>{const min=Math.floor(ms/60000);const h=Math.floor(min/60);const m=min%60;return h?`${h} sa ${m} dk`:`${min} dk`};
+const time=t=>new Date(t).toLocaleTimeString('tr-TR',{hour:'2-digit',minute:'2-digit'});
+function elapsed(s){return s.end ? s.end-s.start : Date.now()-s.start}
+function daySessions(){return data.sessions.filter(s=>new Date(s.start).toDateString()===new Date().toDateString())}
+function render(){
+ const active=data.activeSince!==null, now=Date.now(), todays=daySessions();
+ $('statePill').textContent=active?'Plak çıkarıldı':'Plak takılı';
+ $('statusText').textContent=active?'Plak çıkarılalı geçen süre':'Plak şu anda takılı görünüyor';
+ $('timer').textContent=active?fmtDuration(now-data.activeSince):'00:00:00';
+ $('timerSub').textContent=active?'30 dakikada bir hatırlatma hedeflenir':'Bir sonraki çıkarma seansını başlatmaya hazırsın';
+ $('toggleBtn').textContent=active?'Plağı Taktım':'Plağı Çıkardım'; $('toggleBtn').className='mainbtn'+(active?' stop':'');
+ let total=todays.reduce((sum,s)=>sum+elapsed(s),0);
+ $('total').textContent=fmtShort(total); $('count').textContent=todays.length;
+ $('today').textContent=new Date().toLocaleDateString('tr-TR',{day:'numeric',month:'short'});
+ const list=$('sessions');list.innerHTML='';
+ if(!todays.length){list.innerHTML='<div class="empty">Henüz seans yok. Plağı çıkardığında başlat.</div>'}
+ [...todays].reverse().forEach(s=>{
+  const el=document.createElement('div');el.className='session';
+  const end=s.end?time(s.end):'Devam ediyor';
+  el.innerHTML=`<div><div class="time">${time(s.start)} – ${end}</div><div class="detail">${s.end?'Tamamlandı':'Aktif seans'}</div></div><div class="duration">${fmtShort(elapsed(s))}</div>`;
+  list.appendChild(el);
+ });
+}
+function notify(){
+ if('Notification' in window && Notification.permission==='granted'){
+  new Notification('Plak hatırlatması',{body:'Plağını geri takmayı unutma 💚',tag:'plak-reminder'});
+ }else{
+  $('toast').textContent='Hatırlatma zamanı geldi. Uygulama içi uyarı gösteriliyor.';$('toast').style.display='block';
+ }
+}
+function startReminders(){clearInterval(reminderTimer);reminderTimer=setInterval(()=>{if(data.activeSince!==null)notify()},30*60*1000)}
+$('toggleBtn').addEventListener('click',()=>{
+ if(data.activeSince===null){data.activeSince=Date.now();data.sessions.push({start:data.activeSince,end:null});startReminders();$('toast').textContent='Süre başladı.'}
+ else{const s=data.sessions[data.sessions.length-1];if(s&&!s.end)s.end=Date.now();data.activeSince=null;clearInterval(reminderTimer);$('toast').textContent='Seans kaydedildi.'}
+ $('toast').style.display='block';save();render();
+});
+$('notifyBtn').addEventListener('click',async()=>{
+ if(!('Notification' in window)){alert('Bu tarayıcı bildirimleri desteklemiyor.');return}
+ const p=await Notification.requestPermission();$('toast').textContent=p==='granted'?'Bildirim izni verildi.':'Bildirim izni verilmedi.';$('toast').style.display='block';
+});
+$('exportBtn').addEventListener('click',()=>{
+ const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='plak-takip-verileri.json';a.click();URL.revokeObjectURL(url);
+});
+if('serviceWorker' in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));
+if(data.activeSince!==null)startReminders();
+render();uiTimer=setInterval(render,1000);
+</script></body></html>

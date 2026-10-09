@@ -1,0 +1,10 @@
+{
+  "name": "Plak Takip",
+  "short_name": "Plak Takip",
+  "description": "Plak çıkarma sürelerini ve günlük non-wear time değerini takip et.",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f6f3ee",
+  "theme_color": "#f6f3ee",
+  "icons": []
+}
